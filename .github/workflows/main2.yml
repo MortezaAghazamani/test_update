@@ -1,0 +1,78 @@
+name: Download and Commit File from URL
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'آدرس کامل فایل برای دانلود (مثلاً https://example.com/file.zip)'
+        required: true
+        type: string
+      filename:
+        description: 'نام فایل برای ذخیره در مخزن (پیش‌فرض: filename از URL گرفته می‌شود)'
+        required: false
+        type: string
+        default: ''
+      commit_message:
+        description: 'پیام commit (اختیاری)'
+        required: false
+        type: string
+        default: 'Add downloaded file via GitHub Actions'
+
+# اجازه نوشتن در مخزن را می‌دهد
+permissions:
+  contents: write
+
+jobs:
+  download-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # برای push بعدی نیاز به fetch کامل نیست ولی برای امنیت بهتر است
+          fetch-depth: 1
+
+      - name: Prepare filename
+        id: prep
+        run: |
+          # اگر کاربر نام فایل را وارد کرده باشد، از همان استفاده کن
+          if [ -n "${{ github.event.inputs.filename }}" ]; then
+            FILENAME="${{ github.event.inputs.filename }}"
+          else
+            # در غیر این صورت، نام فایل را از آخرین بخش URL استخراج کن (بعد از آخرین /)
+            FILENAME=$(basename "${{ github.event.inputs.url }}")
+            # اگر URL به / ختم شود یا خالی بماند، یک نام پیش‌فرض بده
+            if [ -z "$FILENAME" ]; then
+              FILENAME="downloaded_file"
+            fi
+          fi
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+      - name: Download file using curl
+        run: |
+          curl -L -o "${{ steps.prep.outputs.filename }}" "${{ github.event.inputs.url }}"
+          echo "فایل با موفقیت دانلود شد: ${{ steps.prep.outputs.filename }}"
+
+      - name: Configure Git user
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit and push the downloaded file
+        run: |
+          # چک کن آیا فایل واقعاً وجود دارد
+          if [ ! -f "${{ steps.prep.outputs.filename }}" ]; then
+            echo "خطا: فایل دانلود نشده است."
+            exit 1
+          fi
+          
+          git add "${{ steps.prep.outputs.filename }}"
+          
+          # اگر تغییری وجود نداشته باشد (فایل قبلاً یکسان است) commit نمی‌کنیم
+          if git diff --cached --quiet; then
+            echo "هیچ تغییری برای commit وجود ندارد. فایل احتمالاً قبلاً با همین محتوا وجود داشته است."
+          else
+            git commit -m "${{ github.event.inputs.commit_message }}"
+            git push
+            echo "تغییرات با موفقیت به مخزن ارسال شد."
+          fi
