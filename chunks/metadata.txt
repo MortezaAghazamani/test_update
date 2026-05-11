@@ -1,0 +1,3 @@
+original_filename=v2rayN-windows-64_
+chunk_count=2
+chunk_size_bytes=99614720
