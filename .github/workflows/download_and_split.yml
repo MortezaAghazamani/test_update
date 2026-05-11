@@ -1,0 +1,65 @@
+name: Split Large File into Chunks
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL فایل بزرگ'
+        required: true
+      filename:
+        description: 'نام فایل اصلی'
+        required: true
+      chunk_size:
+        description: 'اندازه هر تکه به مگابایت (مثلاً 95 برای کمتر از 100MB)'
+        required: false
+        default: '95'
+
+permissions:
+  contents: write
+
+jobs:
+  split-file:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download large file
+        run: |
+          curl -L -o "${{ github.event.inputs.filename }}" "${{ github.event.inputs.url }}"
+          echo "فایل دانلود شد. اندازه فایل:"
+          ls -lh "${{ github.event.inputs.filename }}"
+      
+      - name: Split file into chunks
+        run: |
+          # تبدیل مگابایت به بایت برای split
+          CHUNK_SIZE=$(( ${{ github.event.inputs.chunk_size }} * 1024 * 1024 ))
+          
+          # ایجاد پوشه برای تکه‌ها
+          mkdir chunks
+          
+          # تکه‌تکه کردن فایل
+          split -b $CHUNK_SIZE "${{ github.event.inputs.filename }}" "chunks/part_"
+          
+          # ایجاد فایل متادیتا برای بازسازی
+          echo "original_filename=${{ github.event.inputs.filename }}" > chunks/metadata.txt
+          echo "chunk_count=$(ls chunks/part_* | wc -l)" >> chunks/metadata.txt
+          echo "chunk_size_bytes=$CHUNK_SIZE" >> chunks/metadata.txt
+          
+          # محاسبه MD5 برای بررسی یکپارچگی
+          md5sum "${{ github.event.inputs.filename }}" > chunks/original_file.md5
+          
+          echo "فایل به $(ls chunks/part_* | wc -l) تکه تقسیم شد"
+      
+      - name: Commit chunks to repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # حذف فایل اصلی (اختیاری)
+          rm "${{ github.event.inputs.filename }}"
+          
+          git add chunks/
+          git commit -m "Add split chunks of ${{ github.event.inputs.filename }}"
+          git push
+          
+          echo "تکه‌ها با موفقیت commit شدند"
