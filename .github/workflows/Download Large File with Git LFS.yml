@@ -1,0 +1,49 @@
+name: Download Large File with Git LFS
+
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: 'URL فایل'
+        required: true
+      filename:
+        description: 'نام فایل'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  download-large-file:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout with LFS
+        uses: actions/checkout@v4
+        with:
+          lfs: true  # فعال کردن Git LFS
+
+      - name: Install Git LFS
+        run: |
+          sudo apt-get update
+          sudo apt-get install git-lfs
+          git lfs install
+      
+      - name: Track file type with LFS
+        run: |
+          # ذخیره فایل‌های exe در LFS
+          git lfs track "*.exe"
+          git lfs track "*.zip"
+          git lfs track "*.tar.gz"
+          git add .gitattributes
+
+      - name: Download large file
+        run: |
+          curl -L -o "${{ github.event.inputs.filename }}" "${{ github.event.inputs.url }}"
+      
+      - name: Commit with LFS
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "${{ github.event.inputs.filename }}"
+          git commit -m "Add large file with LFS"
+          git push
